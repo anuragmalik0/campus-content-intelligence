@@ -1,0 +1,362 @@
+"""
+Campus Content Intelligence Agent — FastAPI Web Server
+Layer 4 — Web Interface & Media Backend
+Provides interactive REST APIs and document synchronization backend.
+"""
+
+import os
+import sys
+from pathlib import Path
+from typing import Optional
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import base64
+
+# Ensure project root is on sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.agent.orchestrator import answer_question
+from src.agent.quiz_agent import generate_quiz, analyze_document_knowledge
+from src.indexing.search_index import load_cached_chunks_and_index
+from src.services.speech_service import synthesize_speech, transcribe_audio, is_speech_configured
+from src.services.translator_service import translate_text, is_translator_configured, SUPPORTED_LANGUAGES
+from src.services.document_indexer import (
+    process_and_index_file,
+    delete_document_from_azure_search,
+    load_manifest
+)
+
+app = FastAPI(
+    title="Campus Content Intelligence Agent API",
+    description="Multi-format lecture content retrieval and interactive synchronizer API",
+    version="1.0.0"
+)
+
+# Enable CORS for local dev flexibility
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    """Ensure static files and API responses are never stale in browser cache."""
+    response = await call_next(request)
+    if request.url.path.endswith((".html", ".js", ".css")) or request.url.path in ("/", "/api/info"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+MEDIA_DIR = PROJECT_ROOT / "data" / "sample_media"
+FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+STATIC_DIR = FRONTEND_DIST if (FRONTEND_DIST / "index.html").is_file() else (Path(__file__).resolve().parent / "static")
+
+
+
+class QuestionRequest(BaseModel):
+    question: str
+
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = "en-US-JennyNeural"
+
+
+class STTRequest(BaseModel):
+    audio_base64: str
+    mime_type: Optional[str] = "audio/wav"
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    target_lang: str
+
+
+class QuizRequest(BaseModel):
+    document_name: str
+    difficulty: Optional[str] = "medium"
+    count: Optional[int] = 5
+    topic: Optional[str] = None
+
+
+class AnalyzeDocRequest(BaseModel):
+    document_name: str
+
+
+@app.get("/api/info")
+def get_info():
+    """Return course metadata, indexed sources, and capability status."""
+    count = load_cached_chunks_and_index()
+    return {
+        "course": "AI-103: Deep Learning Foundations",
+        "topic": "Gradient Descent & Optimization Dynamics",
+        "lecture": "Lecture 3: Convergence Rates, Vanishing Gradients & Momentum",
+        "total_chunks": count,
+        "model_name": os.getenv("FOUNDRY_MODEL_DEPLOYMENT", "gpt-5-mini"),
+        "provider": "Microsoft Azure AI Foundry",
+        "speech_available": is_speech_configured(),
+        "translator_available": is_translator_configured(),
+        "supported_languages": SUPPORTED_LANGUAGES,
+        "sources": [
+            {
+                "name": "neural_networks_notes.pdf",
+                "type": "notes",
+                "title": "Comprehensive Lecture Notes",
+                "badge": "Notes (PDF)",
+                "details": "4 Pages — In-depth mathematical formulations & proofs"
+            },
+            {
+                "name": "neural_networks_slides.pdf",
+                "type": "slides",
+                "title": "Professor's Slide Deck",
+                "badge": "Slides (PDF)",
+                "details": "6 Slides — High-level diagrams, bullet points, and key definitions"
+            }
+        ],
+        "demo_questions": []
+    }
+
+
+@app.post("/api/ask")
+def ask_question_endpoint(req: QuestionRequest):
+    """Execute the agent orchestrator seam and return answer with verifiable citations."""
+    if not req.question or not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+    
+    result = answer_question(req.question.strip())
+    return result
+
+
+@app.post("/api/speech/tts")
+def speech_tts_endpoint(req: TTSRequest):
+    """Synthesizes text into audio using Azure AI Speech REST API."""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+
+    success, audio_bytes, info = synthesize_speech(req.text, req.voice or "en-US-JennyNeural")
+    if not success:
+        return JSONResponse(
+            status_code=503 if not is_speech_configured() else 500,
+            content={"success": False, "error": info, "fallback_to_browser": True}
+        )
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "inline; filename=speech.mp3"}
+    )
+
+
+@app.post("/api/speech/stt")
+def speech_stt_endpoint(req: STTRequest):
+    """Transcribes base64-encoded audio using Azure AI Speech STT."""
+    try:
+        audio_bytes = base64.b64decode(req.audio_base64)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 audio: {e}")
+
+    success, result_text = transcribe_audio(audio_bytes, req.mime_type or "audio/wav")
+    if not success:
+        return JSONResponse(
+            status_code=503 if not is_speech_configured() else 500,
+            content={"success": False, "error": result_text, "fallback_to_browser": True}
+        )
+
+    return {"success": True, "transcript": result_text}
+
+
+@app.post("/api/translate")
+def translate_endpoint(req: TranslateRequest):
+    """Translates text to target language using Azure AI Translator."""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="Text to translate cannot be empty.")
+
+    success, translated_text = translate_text(req.text, req.target_lang)
+    if not success:
+        return JSONResponse(
+            status_code=503 if not is_translator_configured() else 500,
+            content={"success": False, "error": translated_text, "fallback": False}
+        )
+
+    return {"success": True, "translated_text": translated_text, "target_lang": req.target_lang}
+
+
+@app.post("/api/upload")
+async def upload_document_endpoint(file: UploadFile = File(...)):
+    """
+    Accepts user-uploaded documents (PDF, DOCX, TXT, MD), extracts text,
+    and indexes chunks directly into the live Azure AI Search cloud index.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
+
+    ext = Path(file.filename).suffix.lower()
+    allowed = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".json"}
+    if ext not in allowed:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported format '{ext}'. Supported: {', '.join(allowed)}"
+        )
+
+    try:
+        content = await file.read()
+        if len(content) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File exceeds maximum size of 20MB.")
+
+        result = process_and_index_file(content, file.filename)
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process and index document: {e}")
+
+
+@app.get("/api/uploaded-files")
+def get_uploaded_files_endpoint():
+    """Returns the list of active user-uploaded documents indexed in Azure AI Search."""
+    manifest = load_manifest()
+    files_list = []
+    for fname, meta in manifest.items():
+        files_list.append({
+            "filename": fname,
+            "chunk_count": meta.get("chunk_count", 0),
+            "preview": meta.get("preview", ""),
+            "file_size": meta.get("file_size", 0)
+        })
+    return {"files": files_list}
+
+
+@app.delete("/api/uploaded-files/{filename}")
+def delete_uploaded_file_endpoint(filename: str):
+    """Deletes all indexed chunks for a file from Azure AI Search."""
+    success, msg = delete_document_from_azure_search(filename)
+    if not success:
+        raise HTTPException(status_code=500, detail=msg)
+    return {"success": True, "message": msg, "filename": filename}
+
+
+@app.post("/api/quiz/analyze-doc")
+def quiz_analyze_doc_endpoint(req: AnalyzeDocRequest):
+    """
+    Phase 1: Agentic Document Comprehension
+    Extracts high-level topics, theoretical concepts, and exercises from the document.
+    """
+    if not req.document_name or not req.document_name.strip():
+        raise HTTPException(status_code=400, detail="Document name is required.")
+    try:
+        data = analyze_document_knowledge(req.document_name.strip())
+        return data
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to analyze document knowledge: {e}")
+
+
+@app.post("/api/quiz/generate")
+def quiz_generate_endpoint(req: QuizRequest):
+    """
+    Agentic Assessment Endpoint:
+    Analyzes document text and generates structured MCQs across difficulty levels.
+    """
+    if not req.document_name or not req.document_name.strip():
+        raise HTTPException(status_code=400, detail="Document name is required.")
+
+    try:
+        quiz = generate_quiz(
+            document_name=req.document_name.strip(),
+            difficulty=req.difficulty or "medium",
+            count=req.count or 5,
+            topic=req.topic.strip() if req.topic else None
+        )
+        return quiz
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate quiz: {e}")
+
+
+@app.post("/api/quiz/generate-from-file")
+async def quiz_generate_from_file_endpoint(
+    file: UploadFile = File(...),
+    difficulty: str = Form("medium"),
+    count: int = Form(5),
+    topic: Optional[str] = Form(None)
+):
+    """
+    One-Step Workflow:
+    Accepts an uploaded question/notes PDF or document, parses via Azure Document Intelligence,
+    indexes into Azure AI Search, and immediately synthesizes an interactive assessment quiz.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
+
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        # Index document using Azure AI Document Intelligence
+        process_and_index_file(content, file.filename)
+
+        # Generate quiz from the freshly indexed document
+        quiz = generate_quiz(
+            document_name=file.filename,
+            difficulty=difficulty,
+            count=count,
+            topic=topic.strip() if topic else None
+        )
+        return quiz
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Document assessment generation failed: {e}")
+
+
+@app.get("/media/{filename}")
+def serve_media(filename: str, request: Request):
+    """Serve media documents (PDF/notes)."""
+    media_path = MEDIA_DIR / filename
+    if not media_path.is_file():
+        raise HTTPException(status_code=404, detail="Media file not found.")
+    
+    # Determine MIME type
+    if filename.endswith(".pdf"):
+        media_type = "application/pdf"
+    elif filename.endswith(".txt"):
+        media_type = "text/plain; charset=utf-8"
+    elif filename.endswith(".json"):
+        media_type = "application/json"
+    else:
+        media_type = "application/octet-stream"
+        
+    return FileResponse(
+        path=media_path,
+        media_type=media_type,
+        filename=filename
+    )
+
+
+# Mount static assets directory
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print("\n" + "=" * 60)
+    print("  🚀 Campus Content Intelligence Agent Web Server")
+    print("  🌐 Interface available at: http://localhost:8000")
+    print("  📚 API documentation at:   http://localhost:8000/docs")
+    print("=" * 60 + "\n")
+    uvicorn.run("src.ui.server:app", host="127.0.0.1", port=8000, reload=True)

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Campus Content Intelligence Agent | AI-103</title>
+  <meta name="description" content="Multi-format lecture intelligence agent with synchronized citations across slides, notes, and documents.">
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="styles.css?v=9">
+</head>
+<body>
+  <!-- Audio element for Azure Speech Text-to-Speech playback -->
+  <audio id="ttsAudioPlayer" preload="none" style="display: none;"></audio>
+
+  <!-- Background ambient glow -->
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+
+  <div class="app-layout">
+    <!-- Top Navigation Bar -->
+    <header class="top-header">
+      <div class="brand-group">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Campus Content Intelligence</h1>
+          <span class="brand-badge">AI-103 Group Project</span>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-indicator">
+          <span class="status-dot"></span>
+          <span id="system-status-text">Azure AI Search / BM25 Ready</span>
+        </div>
+        <div class="lecture-chip">
+          <span class="chip-icon">🎓</span>
+          <span id="topicBadge">Campus Knowledge Hub</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="main-grid">
+      <!-- Intelligent Chat Assistant Section -->
+      <section class="chat-section" aria-label="Chat Interface">
+        <div class="chat-header">
+          <div class="chat-title-group">
+            <h2>Campus Intelligence Assistant</h2>
+            <p>Answers dynamically grounded in course materials, documents, and academic knowledge.</p>
+          </div>
+          <div class="chat-header-actions">
+            <button id="openUploadBtn" class="action-btn-primary" title="Upload custom PDF, DOCX, or text files to index into Azure AI Search">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              <span>Upload Document</span>
+            </button>
+            <button id="clearChatBtn" class="action-btn-ghost" title="Reset conversation">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              </svg>
+              <span>Reset</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Shelf showing uploaded custom documents -->
+        <div id="uploadedFilesShelf" class="uploaded-files-shelf" hidden>
+          <div class="shelf-label">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>Live Indexed User Documents:</span>
+          </div>
+          <div id="uploadedFilesList" class="uploaded-files-list"></div>
+        </div>
+
+        <!-- Scrollable Messages Container -->
+        <div id="chatMessages" class="chat-messages">
+          <!-- Initial Welcome Card -->
+          <div class="message-group system-welcome">
+            <div class="assistant-avatar">🤖</div>
+            <div class="message-card">
+              <div class="message-author">Campus Intelligence Assistant</div>
+              <p class="welcome-lead">
+                Hello! I am your dynamic Campus Intelligence Assistant powered live by Microsoft Azure AI Foundry. Ask me any questions across your courses, lectures, student policies, attendance, or academic guidance:
+              </p>
+              <div class="source-pills-row">
+                <span class="source-tag tag-notes">📚 Foundry Knowledge Base</span>
+                <span class="source-tag tag-slides">📋 Campus Policies & Fees</span>
+                <span class="source-tag tag-notes">🎓 Academic Guidance</span>
+              </div>
+              <p class="welcome-tip">
+                💡 <em>Synthesizes real-time answers directly from your Microsoft Azure AI Foundry Knowledge Base with verifiable citations. Click <strong>Upload Document</strong> above to add custom PDFs or Word docs!</em>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="chatForm" class="chat-input-bar">
+          <div class="input-wrapper">
+            <input 
+              type="text" 
+              id="questionInput" 
+              placeholder="Ask any question (attendance criteria, fees, academic policies, or general queries)..." 
+              maxlength="500"
+              autocomplete="off"
+              required
+            >
+            <div class="input-actions">
+              <span id="charCounter" class="char-counter">0/500</span>
+              <button type="button" id="micBtn" class="mic-button" title="Speak to ask (Azure Speech / Web Speech STT)" aria-label="Microphone">
+                <svg class="mic-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                <span class="mic-pulse-ring" hidden></span>
+              </button>
+              <button type="submit" id="sendBtn" class="send-button" aria-label="Send query">
+                <span class="btn-text">Ask</span>
+                <svg class="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+                <span class="spinner" hidden></span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- Document Upload Modal -->
+  <div id="uploadModal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">📤</span>
+          <h3>Upload Document to Azure AI Search</h3>
+        </div>
+        <button type="button" id="closeUploadModalBtn" class="close-modal-btn" aria-label="Close modal">&times;</button>
+      </div>
+      <p class="modal-sub">
+        Upload your course notes, policy docs, syllabi, or papers (<strong>PDF, Word DOCX, TXT, MD</strong>). The file will be extracted and indexed in real-time into your Azure AI Search cloud index (<code>ks-file-41-index</code>).
+      </p>
+      
+      <div id="dropzone" class="dropzone">
+        <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt,.md,.csv,.json" style="display: none;">
+        <div class="dropzone-inner">
+          <div class="dropzone-icon">📁</div>
+          <p class="dropzone-title">Drag & drop your file here, or <button type="button" id="browseFilesBtn" class="browse-link">Browse files</button></p>
+          <span class="dropzone-hint">Supported: PDF, Word (DOCX), Text, Markdown (Max 20MB)</span>
+        </div>
+      </div>
+
+      <!-- Upload / Indexing Status Indicator -->
+      <div id="uploadStatusBox" class="upload-status-box" hidden>
+        <div class="upload-status-header">
+          <span class="upload-spinner"></span>
+          <span id="uploadStatusText">Parsing document & indexing chunks into Azure AI Search...</span>
+        </div>
+        <div class="upload-progress-bar">
+          <div id="uploadProgressBarFill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Upload Result Alert -->
+      <div id="uploadAlert" class="upload-alert" hidden></div>
+    </div>
+  </div>
+
+  <script src="app.js?v=9"></script>
+</body>
+</html>

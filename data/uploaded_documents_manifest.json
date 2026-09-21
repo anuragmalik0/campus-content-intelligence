@@ -1,0 +1,34 @@
+{
+  "anurag_goyal_resume.pdf": {
+    "filename": "anurag_goyal_resume.pdf",
+    "parser_used": "Azure AI Document Intelligence (prebuilt-layout)",
+    "chunk_count": 5,
+    "indexed_count": 5,
+    "uids": [
+      "up-anurag-goyal-resume-page-1-0-0",
+      "up-anurag-goyal-resume-page-1-1-1",
+      "up-anurag-goyal-resume-page-1-2-2",
+      "up-anurag-goyal-resume-page-1-3-3",
+      "up-anurag-goyal-resume-page-1-4-4"
+    ],
+    "preview": "Anurag Goyal | goyalanurag678@gmail.com | linkedin.com/in/anurag-goyal | Rajpura, Punjab, India 8941907069 github.com/AnuragGoyal007 Professional Summ",
+    "file_size": 169539
+  },
+  "neural_networks_notes (1).pdf": {
+    "filename": "neural_networks_notes (1).pdf",
+    "parser_used": "Azure AI Document Intelligence (prebuilt-layout)",
+    "chunk_count": 7,
+    "indexed_count": 7,
+    "uids": [
+      "up-neural-networks-notes-1-page-1-0-0",
+      "up-neural-networks-notes-1-page-1-1-1",
+      "up-neural-networks-notes-1-page-2-2-0",
+      "up-neural-networks-notes-1-page-2-3-1",
+      "up-neural-networks-notes-1-page-3-4",
+      "up-neural-networks-notes-1-page-4-5-0",
+      "up-neural-networks-notes-1-page-4-6-1"
+    ],
+    "preview": "CS103: Machine Learning & Neural Networks Lecture 3 Notes: Fundamentals of Gradient Descent 1. Introduction and Problem Formulation Gradient descent i",
+    "file_size": 5978
+  }
+}
