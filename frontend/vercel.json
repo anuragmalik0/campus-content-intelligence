@@ -5,11 +5,11 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://BACKEND_URL/api/$1"
+      "destination": "https://campus-content-intelligence.onrender.com/api/$1"
     },
     {
       "source": "/media/(.*)",
-      "destination": "https://BACKEND_URL/media/$1"
+      "destination": "https://campus-content-intelligence.onrender.com/media/$1"
     }
   ]
 }
