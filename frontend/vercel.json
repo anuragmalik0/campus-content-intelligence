@@ -1,0 +1,15 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://BACKEND_URL/api/$1"
+    },
+    {
+      "source": "/media/(.*)",
+      "destination": "https://BACKEND_URL/media/$1"
+    }
+  ]
+}
