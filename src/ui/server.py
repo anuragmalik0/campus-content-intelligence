@@ -36,6 +36,13 @@ from src.services.blob_storage_service import (
     is_blob_storage_configured,
     LOCAL_BLOB_DIR
 )
+from src.services.student_service import (
+    get_or_create_student,
+    get_student_profile,
+    record_quiz_progress,
+    record_question_asked,
+    list_all_students
+)
 
 app = FastAPI(
     title="CampusMind API",
@@ -96,6 +103,28 @@ class QuizRequest(BaseModel):
 
 class AnalyzeDocRequest(BaseModel):
     document_name: str
+
+
+class StudentLoginRequest(BaseModel):
+    student_id: str
+    name: Optional[str] = ""
+    department: Optional[str] = "Computer Science & Engineering"
+    email: Optional[str] = None
+
+
+class RecordQuizRequest(BaseModel):
+    student_id: str
+    document_name: Optional[str] = "Academic Document"
+    topic: Optional[str] = "General Assessment"
+    difficulty: Optional[str] = "medium"
+    score: int
+    total: int
+    quiz_id: Optional[str] = None
+
+
+class RecordQueryRequest(BaseModel):
+    student_id: str
+    question: str
 
 
 @app.get("/api/info")
@@ -362,6 +391,70 @@ async def quiz_generate_from_file_endpoint(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Document assessment generation failed: {e}")
+
+
+@app.post("/api/student/login")
+def student_login_endpoint(req: StudentLoginRequest):
+    """
+    Authenticates or auto-registers a student profile in Azure Storage Account.
+    Returns the student profile, academic department, and accumulated progress stats.
+    """
+    if not req.student_id or not req.student_id.strip():
+        raise HTTPException(status_code=400, detail="Student ID cannot be empty.")
+
+    profile = get_or_create_student(
+        student_id=req.student_id.strip(),
+        name=req.name.strip() if req.name else "",
+        department=req.department.strip() if req.department else "Computer Science & Engineering",
+        email=req.email.strip() if req.email else None
+    )
+    return profile
+
+
+@app.get("/api/student/profile/{student_id}")
+def student_profile_endpoint(student_id: str):
+    """Retrieves full student profile, learning history, and stats from Azure Storage."""
+    profile = get_student_profile(student_id.strip())
+    if not profile:
+        raise HTTPException(status_code=404, detail="Student profile not found.")
+    return profile
+
+
+@app.post("/api/student/record-quiz")
+def student_record_quiz_endpoint(req: RecordQuizRequest):
+    """Records a completed quiz into student's cloud storage profile and updates metrics."""
+    if not req.student_id or not req.student_id.strip():
+        raise HTTPException(status_code=400, detail="Student ID is required.")
+
+    quiz_data = {
+        "quiz_id": req.quiz_id,
+        "document_name": req.document_name,
+        "topic": req.topic,
+        "difficulty": req.difficulty,
+        "score": req.score,
+        "total": req.total
+    }
+    updated = record_quiz_progress(req.student_id.strip(), quiz_data)
+    return {"success": True, "profile": updated}
+
+
+@app.post("/api/student/record-query")
+def student_record_query_endpoint(req: RecordQueryRequest):
+    """Records an asked question into student's cloud learning activity log."""
+    if not req.student_id or not req.student_id.strip():
+        raise HTTPException(status_code=400, detail="Student ID is required.")
+    if not req.question or not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    updated = record_question_asked(req.student_id.strip(), req.question.strip())
+    return {"success": True, "profile": updated}
+
+
+@app.get("/api/student/list")
+def student_list_endpoint():
+    """Lists registered students across campus departments."""
+    students = list_all_students()
+    return {"students": students}
 
 
 @app.get("/media/{filename}")

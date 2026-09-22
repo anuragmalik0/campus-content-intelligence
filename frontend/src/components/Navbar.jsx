@@ -1,6 +1,13 @@
 import React from 'react';
 
-export default function Navbar({ modelName, activeTab = 'chat', onChangeTab }) {
+export default function Navbar({
+  modelName,
+  activeTab = 'chat',
+  onChangeTab,
+  currentStudent,
+  onOpenLogin,
+  onOpenProfile
+}) {
   return (
     <header className="top-header">
       <div className="brand-group">
@@ -37,13 +44,37 @@ export default function Navbar({ modelName, activeTab = 'chat', onChangeTab }) {
       </div>
 
       <div className="header-status">
+        {currentStudent ? (
+          <button
+            type="button"
+            className="student-nav-chip"
+            onClick={onOpenProfile}
+            title="Click to view learning analytics & Azure Storage progress"
+          >
+            <span className="student-nav-avatar">👨‍🎓</span>
+            <div className="student-nav-info">
+              <span className="student-nav-name">{currentStudent.name || 'Student'}</span>
+              <span className="student-nav-dept">{(currentStudent.department || 'General').split('&')[0].trim()}</span>
+            </div>
+            <span className="student-nav-badge">
+              {currentStudent.stats?.quizzes_taken || 0} Quizzes
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="student-login-btn"
+            onClick={onOpenLogin}
+            title="Sign in with Student ID to track progress in Azure Storage"
+          >
+            <span>🔑</span>
+            <span>Student Login</span>
+          </button>
+        )}
+
         <div className="status-indicator">
           <span className="status-dot"></span>
           <span>Azure Foundry ({modelName || 'gpt-5-mini'})</span>
-        </div>
-        <div className="lecture-chip">
-          <span>🎓</span>
-          <span>Knowledge Hub</span>
         </div>
       </div>
     </header>

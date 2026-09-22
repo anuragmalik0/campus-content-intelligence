@@ -9,6 +9,8 @@ data/cache/*
 !data/cache/.gitkeep
 data/blob_storage/*
 !data/blob_storage/.gitkeep
+data/student_profiles/*
+!data/student_profiles/.gitkeep
 *.log
 *.zip
 *.winmd

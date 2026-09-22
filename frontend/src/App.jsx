@@ -5,6 +5,8 @@ import MessageCard from './components/MessageCard';
 import ChatInput from './components/ChatInput';
 import UploadModal from './components/UploadModal';
 import QuizView from './components/QuizView';
+import StudentAuthModal from './components/StudentAuthModal';
+import StudentProfileModal from './components/StudentProfileModal';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat'); // 'chat' | 'quiz'
@@ -20,6 +22,18 @@ export default function App() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeAudioId, setActiveAudioId] = useState(null);
+
+  // Student Authentication & Cloud Progress State
+  const [currentStudent, setCurrentStudent] = useState(() => {
+    try {
+      const saved = localStorage.getItem('campusmind_student');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
   const audioPlayerRef = useRef(null);
@@ -50,6 +64,39 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Could not fetch uploaded files:', err);
+    }
+  };
+
+  const handleLoginSuccess = (profile) => {
+    setCurrentStudent(profile);
+    localStorage.setItem('campusmind_student', JSON.stringify(profile));
+  };
+
+  const handleLogout = () => {
+    setCurrentStudent(null);
+    localStorage.removeItem('campusmind_student');
+  };
+
+  const handleQuizCompleted = async (quizSummary) => {
+    if (!currentStudent?.student_id) return;
+    try {
+      const res = await fetch('/api/student/record-quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: currentStudent.student_id,
+          ...quizSummary
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.profile) {
+          setCurrentStudent(data.profile);
+          localStorage.setItem('campusmind_student', JSON.stringify(data.profile));
+        }
+      }
+    } catch (err) {
+      console.warn('Could not save quiz progress:', err);
     }
   };
 
@@ -93,6 +140,26 @@ export default function App() {
     ];
     setMessages(newMessages);
     setIsLoading(true);
+
+    // Record inquiry to student profile if signed in
+    if (currentStudent?.student_id) {
+      fetch('/api/student/record-query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: currentStudent.student_id,
+          question: queryText
+        })
+      })
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.profile) {
+            setCurrentStudent(data.profile);
+            localStorage.setItem('campusmind_student', JSON.stringify(data.profile));
+          }
+        })
+        .catch(() => {});
+    }
 
     try {
       const res = await fetch('/api/ask', {
@@ -249,6 +316,9 @@ export default function App() {
           modelName={modelName}
           activeTab={activeTab}
           onChangeTab={setActiveTab}
+          currentStudent={currentStudent}
+          onOpenLogin={() => setIsAuthModalOpen(true)}
+          onOpenProfile={() => setIsProfileModalOpen(true)}
         />
 
         {activeTab === 'quiz' ? (
@@ -259,6 +329,8 @@ export default function App() {
             onPlayTTS={handlePlayTTS}
             onStopTTS={handleStopTTS}
             activeAudioId={activeAudioId}
+            currentStudent={currentStudent}
+            onQuizCompleted={handleQuizCompleted}
           />
         ) : (
           <main className="chat-section">
@@ -347,6 +419,21 @@ export default function App() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onUploadSuccess={() => fetchUploadedFiles()}
+      />
+
+      <StudentAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
+        currentStudent={currentStudent}
+      />
+
+      <StudentProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        student={currentStudent}
+        onSwitchStudent={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
       />
     </>
   );

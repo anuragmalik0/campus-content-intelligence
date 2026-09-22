@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 export default function QuizView({
   uploadedFiles,
@@ -6,7 +6,9 @@ export default function QuizView({
   modelName,
   onPlayTTS,
   onStopTTS,
-  activeAudioId
+  activeAudioId,
+  currentStudent,
+  onQuizCompleted
 }) {
   const [selectedDoc, setSelectedDoc] = useState(
     uploadedFiles && uploadedFiles.length > 0 ? uploadedFiles[0].filename : ''
@@ -24,6 +26,7 @@ export default function QuizView({
   const [docAnalysis, setDocAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showTheoryDetails, setShowTheoryDetails] = useState(false);
+  const [recordedForQuiz, setRecordedForQuiz] = useState(false);
   const fileInputRef = useRef(null);
 
   // If selectedDoc is empty and uploadedFiles gets populated, pick the first one
@@ -74,6 +77,7 @@ export default function QuizView({
     setQuizData(null);
     setUserAnswers({});
     setShowResults(false);
+    setRecordedForQuiz(false);
 
     try {
       let res;
@@ -145,8 +149,37 @@ export default function QuizView({
   const handleRetake = () => {
     setUserAnswers({});
     setShowResults(false);
+    setRecordedForQuiz(false);
     onStopTTS();
   };
+
+  // Automatically save progress to Azure Storage for logged-in student
+  useEffect(() => {
+    if (quizData && totalQuestions > 0 && answeredCount === totalQuestions && !recordedForQuiz) {
+      setRecordedForQuiz(true);
+      if (currentStudent && onQuizCompleted) {
+        onQuizCompleted({
+          quiz_id: quizData.quiz_id || `quiz-${Date.now()}`,
+          document_name: quizData.document_name || selectedDoc || 'Academic Document',
+          topic: quizData.topic || topicFocus || 'Document Knowledge',
+          difficulty: quizData.difficulty || difficulty,
+          score: correctCount,
+          total: totalQuestions
+        });
+      }
+    }
+  }, [
+    quizData,
+    totalQuestions,
+    answeredCount,
+    recordedForQuiz,
+    currentStudent,
+    onQuizCompleted,
+    correctCount,
+    difficulty,
+    selectedDoc,
+    topicFocus
+  ]);
 
   // Export Quiz
   const handleExportQuiz = () => {
@@ -597,6 +630,18 @@ export default function QuizView({
               <p className="summary-details">
                 You answered <strong>{correctCount}</strong> out of <strong>{totalQuestions}</strong> questions correctly.
               </p>
+
+              {currentStudent ? (
+                <div className="summary-storage-saved">
+                  <span>☁️</span>
+                  <span>Progress successfully recorded in Azure Storage for <strong>{currentStudent.name}</strong> ({currentStudent.department.split('&')[0].trim()})</span>
+                </div>
+              ) : (
+                <div className="summary-storage-prompt">
+                  <span>💡</span>
+                  <span>Want to persist your score and learning analytics? Sign in via <strong>Student Login</strong> at the top!</span>
+                </div>
+              )}
 
               <div className="summary-actions">
                 <button

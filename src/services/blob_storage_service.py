@@ -56,11 +56,18 @@ def get_blob_service_client():
     raise RuntimeError("Azure Blob Storage credentials are not configured in .env.")
 
 
+_VERIFIED_CONTAINERS = set()
+
 def ensure_container_exists(client, container_name: str):
     """Ensures the specified container exists in Azure Blob Storage."""
     container_client = client.get_container_client(container_name)
-    if not container_client.exists():
+    if container_name in _VERIFIED_CONTAINERS:
+        return container_client
+    try:
         container_client.create_container()
+    except Exception:
+        pass
+    _VERIFIED_CONTAINERS.add(container_name)
     return container_client
 
 
