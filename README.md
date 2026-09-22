@@ -312,11 +312,21 @@ A common failure mode in LLM applications is hallucinating from pretraining know
 
 ---
 
-## 🔮 Future Improvements
+## 🔮 Future Improvements & Strategic Roadmap
 
-- Hybrid search combining dense embeddings with BM25 keyword matching for expanded semantic coverage across synonyms.
-- Multi-lecture cross-module indexing spanning an entire 14-week university syllabus.
-- Automatic generation of review flashcards and practice exam questions directly from indexed chunks.
+### 1. 🏢 Institutional Scalability
+- **Department-Level Customization:** Every department — Computer Science, Mechanical Engineering, Management, Medicine — has distinct courses, curricula, and specialized terminology.
+- **Partitioned Multi-Tenant Storage:** Partition Azure Table and Blob Storage per department to enforce clean data isolation and strict privacy boundaries.
+- **Dedicated Department Search Indices:** Stand up dedicated Azure AI Search indices per department with zero cross-department overlap, ensuring students only query materials relevant to their syllabus.
+
+### 2. 🎬 AI Tutorial Video Generation
+- **Multimodal Learning for Visual Learners:** Text and audio read-aloud work well, but many students absorb complex topics more effectively through visual demonstrations.
+- **On-Demand 60-Second Video Tutorials:** Automatically turn synthesized RAG answers into concise, 60-second animated video tutorials on demand.
+- **AI Avatars & Visual Formula Walk-Throughs:** Integrate synthetic AI avatars, dynamic animated diagrams, and step-by-step mathematical formula walkthroughs directly into the response stream.
+
+### 3. 🔍 Advanced Semantic Search & Syllabus-Wide Coverage
+- **Hybrid Vector Search:** Combine dense embeddings (`text-embedding-3-small`) with BM25 keyword matching for expanded semantic coverage across synonyms.
+- **Cross-Module Syllabus Indexing:** Expand document ingestion to cover an entire 14-week university syllabus across multiple prerequisite subjects.
 
 ---
 
