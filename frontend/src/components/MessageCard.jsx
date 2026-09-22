@@ -105,6 +105,7 @@ export default function MessageCard({
 }) {
   const [selectedLang, setSelectedLang] = useState('');
   const [translating, setTranslating] = useState(false);
+  const [showThinking, setShowThinking] = useState(true);
 
   // User Query Bubble
   if (message.role === 'user') {
@@ -126,15 +127,15 @@ export default function MessageCard({
         <div className="message-card">
           <div className="cloud-badge">☁️ Azure Foundry · {modelName || 'gpt-5-mini'}</div>
           <p className="welcome-lead">
-            Hello! I am your dynamic Campus Intelligence Assistant powered live by Microsoft Azure AI Foundry and Azure AI Search. Ask me any questions across your courses, lectures, student policies, attendance, or academic guidance:
+            Hello! I am your dynamic CampusMind Assistant powered live by Microsoft Azure AI Foundry, Azure AI Search, and Azure Blob Storage. Ask me any questions across your courses, lectures, student policies, attendance, or academic guidance:
           </p>
           <div className="source-pills-row">
             <span className="source-tag tag-notes">📚 Foundry Knowledge Base</span>
-            <span className="source-tag tag-slides">📋 Campus Policies & Fees</span>
-            <span className="source-tag tag-notes">🎓 Academic Guidance</span>
+            <span className="source-tag tag-slides">☁️ Azure Blob Storage</span>
+            <span className="source-tag tag-notes">🧠 Deep Cognitive Reasoning</span>
           </div>
           <p className="welcome-tip">
-            💡 <em>Synthesizes real-time answers directly from your Azure AI Search Knowledge Base with verifiable citations. Click <strong>Upload Document</strong> above to add custom PDFs or Word docs!</em>
+            💡 <em>Synthesizes real-time answers with multi-step cognitive reasoning directly from your cloud RAG knowledge base. Click <strong>Upload Document</strong> above to store files in Blob Storage and index them live!</em>
           </p>
         </div>
       </div>
@@ -185,7 +186,45 @@ export default function MessageCard({
     <div className="message-group assistant-group">
       <div className="assistant-avatar">🤖</div>
       <div className="message-card">
-        <div className="cloud-badge">☁️ Azure Foundry · {modelName || 'gpt-5-mini'}</div>
+        <div className="card-top-badges">
+          <div className="cloud-badge">☁️ Azure Foundry · {modelName || 'gpt-5-mini'}</div>
+          {message.thinking_summary && (
+            <div className="reasoning-badge">🧠 Deep Thinking Enabled</div>
+          )}
+        </div>
+
+        {/* Deep Thinking & Cognitive Reasoning Accordion */}
+        {message.thinking_summary && (
+          <div className="thinking-accordion">
+            <button
+              type="button"
+              className="thinking-toggle-btn"
+              onClick={() => setShowThinking(prev => !prev)}
+              aria-expanded={showThinking}
+              title="Click to expand/collapse cognitive reasoning steps"
+            >
+              <div className="thinking-toggle-title">
+                <span className="thinking-brain-icon">🧠</span>
+                <span className="thinking-label">Deep Thinking & Evidence Synthesis</span>
+                <span className="thinking-pill">RAG Protocol</span>
+              </div>
+              <span className={`thinking-chevron ${showThinking ? 'open' : ''}`}>
+                {showThinking ? '▲' : '▼'}
+              </span>
+            </button>
+            {showThinking && (
+              <div className="thinking-content-panel">
+                <div className="thinking-content-text">
+                  {message.thinking_summary.split('\n').map((line, idx) => (
+                    <div key={idx} className="thinking-step-line">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="answer-text">
           {translating ? (
@@ -204,13 +243,26 @@ export default function MessageCard({
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Verified Knowledge Base Source:</span>
+              <span>Verified Knowledge Base Citations (Search & Blob Storage):</span>
             </div>
             <div className="citations-list">
               {message.citations.map((c, i) => (
-                <div key={i} className="citation-chip" title={`Grounded in ${c.source_name}`}>
+                <div key={i} className="citation-chip" title={`Grounded in ${c.source_name} (${c.location_kind || 'Location'}: ${c.location})`}>
                   <span>📄</span>
                   <span><strong>{c.source_name}</strong></span>
+                  {c.location && <span className="citation-loc-tag">@{c.location}</span>}
+                  {c.blob_url && (
+                    <a
+                      href={c.blob_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="citation-blob-badge"
+                      title="Open verified source document in Azure Blob Storage"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      ☁️ Blob Link
+                    </a>
+                  )}
                 </div>
               ))}
             </div>

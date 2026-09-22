@@ -10,22 +10,36 @@ export default function UploadedFilesShelf({ files, onDeleteFile }) {
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
         </svg>
-        <span>Live Indexed User Documents:</span>
+        <span>Cloud Repository (Azure AI Search & Blob Storage):</span>
       </div>
       <div className="uploaded-files-list">
         {files.map((file) => (
           <div 
             key={file.filename} 
             className="uploaded-file-pill" 
-            title={`${file.filename} (${file.chunk_count || 1} chunks in Azure AI Search)`}
+            title={`${file.filename} (${file.chunk_count || 1} chunks · Provider: ${file.storage_provider || 'Azure Blob Storage'})`}
           >
             <span>📄</span>
-            <span>{file.filename}</span>
+            <span className="file-pill-title">{file.filename}</span>
+            {file.blob_url ? (
+              <a
+                href={file.blob_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shelf-blob-link"
+                title="View original file in Blob Storage"
+                onClick={(e) => e.stopPropagation()}
+              >
+                ☁️ Blob
+              </a>
+            ) : (
+              <span className="shelf-blob-tag">☁️ Stored</span>
+            )}
             <button
               type="button"
               className="delete-file-btn"
               onClick={() => onDeleteFile(file.filename)}
-              title="Remove from Azure AI Search index"
+              title="Remove from Azure AI Search and Blob Storage"
             >
               &times;
             </button>

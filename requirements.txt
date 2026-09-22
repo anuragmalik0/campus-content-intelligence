@@ -7,3 +7,4 @@ streamlit>=1.36.0
 openai>=1.30.0
 PyPDF2>=3.0.1
 Pillow>=10.3.0
+azure-storage-blob>=12.19.0

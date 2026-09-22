@@ -1,6 +1,6 @@
 @echo off
 echo ===================================================
-echo  Starting Campus Content Intelligence Agent (React)
+echo  Starting CampusMind Agent (React)
 echo ===================================================
 echo.
 echo 1. Starting FastAPI backend on http://127.0.0.1:8000 ...

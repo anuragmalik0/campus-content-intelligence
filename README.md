@@ -1,4 +1,4 @@
-# Campus Content Intelligence Agent
+# CampusMind — Academic Content Intelligence Agent
 
 **AI-103 Group Project — Academic Document Intelligence & Assessment Agent**  
 *Grounded Document Question Answering, Autonomous Quiz Generation & Verifiable Citations*

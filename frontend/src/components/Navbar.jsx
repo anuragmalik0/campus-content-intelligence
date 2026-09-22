@@ -10,7 +10,7 @@ export default function Navbar({ modelName, activeTab = 'chat', onChangeTab }) {
           </svg>
         </div>
         <div className="brand-text">
-          <h1>Campus Content Intelligence</h1>
+          <h1>CampusMind</h1>
           <span className="brand-badge">AI-103 Group Project</span>
         </div>
       </div>

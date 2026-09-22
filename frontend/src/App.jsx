@@ -127,7 +127,8 @@ export default function App() {
           answered: data.answered,
           reason: data.reason,
           citations: data.citations || [],
-          sourceDocs: data.source_documents || []
+          sourceDocs: data.source_documents || [],
+          thinking_summary: data.thinking_summary || null
         }
       ]);
     } catch (err) {
@@ -263,7 +264,7 @@ export default function App() {
           <main className="chat-section">
           <div className="chat-header">
             <div className="chat-title-group">
-              <h2>Campus Intelligence Assistant</h2>
+              <h2>CampusMind Assistant</h2>
               <p>Answers dynamically grounded in course materials, documents, and academic knowledge.</p>
             </div>
 

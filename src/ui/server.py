@@ -1,5 +1,5 @@
 """
-Campus Content Intelligence Agent — FastAPI Web Server
+CampusMind — FastAPI Web Server
 Layer 4 — Web Interface & Media Backend
 Provides interactive REST APIs and document synchronization backend.
 """
@@ -30,9 +30,15 @@ from src.services.document_indexer import (
     delete_document_from_azure_search,
     load_manifest
 )
+from src.services.blob_storage_service import (
+    list_documents_in_blob,
+    get_blob_url,
+    is_blob_storage_configured,
+    LOCAL_BLOB_DIR
+)
 
 app = FastAPI(
-    title="Campus Content Intelligence Agent API",
+    title="CampusMind API",
     description="Multi-format lecture content retrieval and interactive synchronizer API",
     version="1.0.0"
 )
@@ -103,6 +109,7 @@ def get_info():
         "total_chunks": count,
         "model_name": os.getenv("FOUNDRY_MODEL_DEPLOYMENT", "gpt-5-mini"),
         "provider": "Microsoft Azure AI Foundry",
+        "blob_storage_configured": is_blob_storage_configured(),
         "speech_available": is_speech_configured(),
         "translator_available": is_translator_configured(),
         "supported_languages": SUPPORTED_LANGUAGES,
@@ -224,17 +231,51 @@ async def upload_document_endpoint(file: UploadFile = File(...)):
 
 @app.get("/api/uploaded-files")
 def get_uploaded_files_endpoint():
-    """Returns the list of active user-uploaded documents indexed in Azure AI Search."""
+    """Returns the list of active user-uploaded documents indexed in Azure AI Search and Azure Blob Storage."""
     manifest = load_manifest()
     files_list = []
     for fname, meta in manifest.items():
+        blob_url = meta.get("blob_url") or get_blob_url(meta.get("blob_name") or fname)
+        storage_provider = meta.get("storage_provider") or ("Azure Blob Storage" if is_blob_storage_configured() else "Local Blob Simulator")
         files_list.append({
             "filename": fname,
             "chunk_count": meta.get("chunk_count", 0),
             "preview": meta.get("preview", ""),
-            "file_size": meta.get("file_size", 0)
+            "file_size": meta.get("file_size", 0),
+            "blob_url": blob_url,
+            "storage_provider": storage_provider
         })
     return {"files": files_list}
+
+
+@app.get("/api/blobs")
+def list_blobs_endpoint():
+    """Lists all stored blobs in Azure Blob Storage container and local simulator."""
+    return {"blobs": list_documents_in_blob()}
+
+
+@app.get("/api/blobs/file/{filename}")
+def serve_blob_file(filename: str):
+    """Serves a stored document from local blob simulator if Azure direct URL is not used."""
+    local_path = LOCAL_BLOB_DIR / filename
+    if not local_path.is_file():
+        raise HTTPException(status_code=404, detail="Blob document not found in storage.")
+
+    content_type = "application/octet-stream"
+    if filename.endswith(".pdf"):
+        content_type = "application/pdf"
+    elif filename.endswith(".txt"):
+        content_type = "text/plain; charset=utf-8"
+    elif filename.endswith(".docx"):
+        content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif filename.endswith(".json"):
+        content_type = "application/json"
+
+    return FileResponse(
+        path=local_path,
+        media_type=content_type,
+        filename=filename
+    )
 
 
 @app.delete("/api/uploaded-files/{filename}")
@@ -355,7 +396,7 @@ app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 60)
-    print("  🚀 Campus Content Intelligence Agent Web Server")
+    print("  🚀 CampusMind Web Server")
     print("  🌐 Interface available at: http://localhost:8000")
     print("  📚 API documentation at:   http://localhost:8000/docs")
     print("=" * 60 + "\n")

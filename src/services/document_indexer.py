@@ -19,6 +19,12 @@ load_dotenv(override=True)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MANIFEST_FILE = PROJECT_ROOT / "data" / "uploaded_documents_manifest.json"
 
+from src.services.blob_storage_service import (
+    upload_document_to_blob,
+    delete_document_from_blob,
+    get_blob_url
+)
+
 
 def get_search_config() -> Tuple[str, str, str]:
     """Dynamically get Azure AI Search credentials from environment."""
@@ -427,7 +433,9 @@ def delete_document_from_azure_search(filename: str) -> Tuple[bool, str]:
             if filename in manifest:
                 del manifest[filename]
                 save_manifest(manifest)
-            return True, f"Successfully deleted {len(uids_to_delete)} chunks for '{filename}' from Azure AI Search."
+            # Delete from Azure Blob Storage as well
+            delete_document_from_blob(filename)
+            return True, f"Successfully deleted {len(uids_to_delete)} chunks for '{filename}' from Azure AI Search and Blob Storage."
         else:
             return False, f"Azure Search delete failed with status {del_res.status_code}: {del_res.text[:150]}"
     except Exception as e:
@@ -437,14 +445,25 @@ def delete_document_from_azure_search(filename: str) -> Tuple[bool, str]:
 def process_and_index_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     """
     High-level orchestrator:
-    1. Extracts and chunks the file using Azure AI Document Intelligence.
-    2. Pushes chunks to Azure AI Search.
-    3. Saves record in the local manifest.
+    1. Stores raw document in Azure Blob Storage for cloud provenance and durable persistence.
+    2. Extracts and chunks the file using Azure AI Document Intelligence.
+    3. Pushes chunks to Azure AI Search.
+    4. Saves record in the local manifest with blob URL.
     Returns: summary dict
     """
+    # 1. Upload to Azure Blob Storage
+    blob_info = upload_document_to_blob(file_bytes, filename)
+    blob_url = blob_info.get("blob_url", "")
+    storage_provider = blob_info.get("storage_provider", "Azure Blob Storage")
+
+    # 2. Extract and chunk
     chunks, parser_used = chunk_document(file_bytes, filename)
     if not chunks:
         raise ValueError("Document yielded 0 chunks.")
+
+    # Tag each chunk with blob provenance
+    for c in chunks:
+        c["blob_url"] = blob_url
 
     success, indexed_count, message = index_chunks_to_azure_search(chunks)
     if not success and indexed_count == 0:
@@ -461,7 +480,10 @@ def process_and_index_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         "indexed_count": indexed_count,
         "uids": uids,
         "preview": snippet_preview,
-        "file_size": len(file_bytes)
+        "file_size": len(file_bytes),
+        "blob_url": blob_url,
+        "storage_provider": storage_provider,
+        "container_name": blob_info.get("container_name", "campus-documents")
     }
     save_manifest(manifest)
 
@@ -481,6 +503,8 @@ def process_and_index_file(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         "parser_used": parser_used,
         "chunks_indexed": indexed_count,
         "preview": snippet_preview,
+        "blob_url": blob_url,
+        "storage_provider": storage_provider,
         "message": message
     }
 
