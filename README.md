@@ -28,41 +28,123 @@ To study effectively, a student needs exact answers with verifiable citations an
 
 ---
 
-## 🏛️ System Architecture
+## 🏛️ System Architecture & Data Flow Graphs
 
-The system is structured into four unidirectional layers communicating strictly through standardized data contracts:
+CampusMind employs an end-to-end multi-tier pipeline connecting student queries and lecture materials through Azure Cloud AI services with resilient offline fallbacks.
 
+### 1. Overall System Architecture Graph
+
+```mermaid
+graph LR
+    %% Styles
+    classDef inputNode fill:#f0f9ff,stroke:#0284c7,stroke-width:2px,color:#0369a1;
+    classDef procNode fill:#f8fafc,stroke:#64748b,stroke-width:2px,color:#1e293b;
+    classDef cloudNode fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#064e3b;
+    classDef agentNode fill:#fdf4ff,stroke:#c026d3,stroke-width:2px,color:#701a75;
+    classDef outNode fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f;
+
+    subgraph Inputs["📥 Document & Query Inputs"]
+        Docs["📄 Academic Documents<br/>(PDF, DOCX, TXT)"]:::inputNode
+        Q["❓ User Questions<br/>(Text / Audio Voice)"]:::inputNode
+    end
+
+    subgraph Ingestion["☁️ Ingestion & Persistence"]
+        Ingest["Document Ingestion<br/>(document_indexer.py)"]:::procNode
+        Blob[("Azure Blob Storage<br/>campus-documents")]:::cloudNode
+        OCR["Azure AI Document Intelligence<br/>(Layout Analysis)"]:::cloudNode
+        Ingest --> Blob
+        Ingest --> OCR
+    end
+
+    subgraph Search["🔍 Cloud Search & Indexing"]
+        SearchIndex[("Azure AI Search<br/>ks-file-41-index")]:::cloudNode
+        BM25[("Local BM25 Index<br/>Memory Fallback")]:::procNode
+        OCR --> SearchIndex & BM25
+    end
+
+    subgraph Reasoning["🧠 Cognitive Agent Layer"]
+        Filter{"In-Scope<br/>Check?"}:::agentNode
+        RAG["XML RAG Isolation<br/>&lt;rag_knowledge_base&gt;"]:::agentNode
+        Foundry["Azure AI Foundry<br/>(gpt-5-mini Reasoning)"]:::cloudNode
+        QuizEng["Quiz Agent<br/>(Theory &amp; MCQs)"]:::agentNode
+        
+        Q --> Filter
+        Filter -->|In Scope| RAG --> Foundry
+        Filter -->|Out of Scope| Refuse["🛡️ Safe Refusal"]:::outNode
+        SearchIndex --> RAG
+        SearchIndex --> QuizEng
+    end
+
+    subgraph Output["🖥️ UI & Interactive Services"]
+        UI["React 19 Dashboard<br/>(CampusMind)"]:::outNode
+        Speech["Azure AI Speech<br/>(Neural Read-Aloud)"]:::cloudNode
+        Trans["Azure AI Translator<br/>(10+ Languages)"]:::cloudNode
+        
+        Foundry --> UI
+        QuizEng --> UI
+        UI <--> Speech & Trans
+    end
+
+    Docs --> Ingest
 ```
-    notes.pdf           slides.pdf               exam_questions.pdf
-        |                   |                            |
-        v                   v                            v
-  +-------------------------------------------------------------+
-  |  LAYER 1 — INGESTION & DOCUMENT INTELLIGENCE                |
-  |  document_processor.py  |  document_indexer.py (Azure OCR)  |
-  +-------------------------------------------------------------+
-        |
-        |  Chunk[]  (Unified Document Chunk Contract)
-        v
-  +-------------------------------------------------------------+
-  |  LAYER 2 — INDEXING                                         |
-  |  search_index.py  (Azure AI Search & Local BM25 Engine)     |
-  +-------------------------------------------------------------+
-        |
-        |  search(query, top=5) -> list[SearchHit]
-        v
-  +-------------------------------------------------------------+
-  |  LAYER 3 — AGENT & ASSESSMENT                               |
-  |  orchestrator.py  (Two-Stage Refusal + Grounded Synthesis)  |
-  |  quiz_agent.py    (Theory Mapping + Autonomous MCQ Engine)  |
-  +-------------------------------------------------------------+
-        |
-        |  Answer & Quiz Data Contracts
-        v
-  +-------------------------------------------------------------+
-  |  LAYER 4 — INTERFACE & SERVICES                             |
-  |  React (Vite) App  |  FastAPI Backend  |  Azure Speech/Trans|
-  +-------------------------------------------------------------+
+
+---
+
+### 2. Deep Thinking RAG Pipeline Graph
+
+This graph details the step-by-step cognitive reasoning workflow executed on every question:
+
+```mermaid
+graph TD
+    %% Node Styling
+    classDef step fill:#eff6ff,stroke:#3b82f6,stroke-width:2px,color:#1e40af;
+    classDef brain fill:#faf5ff,stroke:#a855f7,stroke-width:2px,color:#6b21a8;
+    classDef cloud fill:#f0fdf4,stroke:#22c55e,stroke-width:2px,color:#15803d;
+    classDef decision fill:#fffbeb,stroke:#f59e0b,stroke-width:2px,color:#92400e;
+    classDef term fill:#fdf2f8,stroke:#ec4899,stroke-width:2px,color:#831843;
+
+    Start(["👤 Student Enters Query"]):::step --> SearchStep["1. Retrieve Top-k Chunks<br/>(Azure AI Search)"]:::cloud
+    SearchStep --> OverlapCheck{"2. Pre-filter Overlap<br/>Score &gt; Threshold?"}:::decision
+    
+    OverlapCheck -->|No| Reject["🛡️ Return Grounded Refusal<br/>(Zero Hallucination)"]:::term
+    
+    OverlapCheck -->|Yes| PackXML["3. Construct XML Isolation<br/>&lt;rag_knowledge_base&gt; with blob_url"]:::step
+    
+    PackXML --> Phase1["4. Deep Thinking: Phase 1<br/>Evidence &amp; Formula Discovery"]:::brain
+    Phase1 --> Phase2["5. Deep Thinking: Phase 2<br/>Cross-Source Coherence &amp; Synthesis"]:::brain
+    Phase2 --> Phase3["6. Deep Thinking: Phase 3<br/>Citation Grounding Verification"]:::brain
+    
+    Phase3 --> LLMResponse["7. Generate Structured Response<br/>&lt;deep_thinking&gt; + &lt;grounded_answer&gt;"]:::cloud
+    
+    LLMResponse --> Parse["8. Parse &amp; Verify Citations<br/>Match exact [Source @ Location]"]:::step
+    
+    Parse --> FinalDisplay(["🖥️ Display in CampusMind UI<br/>• Collapsible 🧠 Deep Thinking Panel<br/>• Clickable ☁️ Blob Link Citations"]):::term
 ```
+
+---
+
+### 3. Agentic Assessment & Quiz Generation Graph
+
+```mermaid
+graph LR
+    %% Styles
+    classDef fileNode fill:#fefce8,stroke:#ca8a04,stroke-width:2px,color:#713f12;
+    classDef parseNode fill:#ecfdf5,stroke:#059669,stroke-width:2px,color:#064e3b;
+    classDef aiNode fill:#f5f3ff,stroke:#7c3aed,stroke-width:2px,color:#4c1d95;
+    classDef uiNode fill:#f0f9ff,stroke:#0284c7,stroke-width:2px,color:#0369a1;
+
+    Upload["📄 Notes / Exam Paper (PDF)"]:::fileNode
+    Storage["☁️ Azure Blob Storage"]:::parseNode
+    OCR["Azure Document Intelligence<br/>(Layout-Aware OCR)"]:::parseNode
+    Comprehend["Agentic Comprehension<br/>(Topic &amp; Theory Extraction)"]:::aiNode
+    MCQEngine["MCQ Generator Engine<br/>(Easy / Medium / Hard)"]:::aiNode
+    QuizUI["🎯 Interactive Quiz UI<br/>(Instant Scoring &amp; Review)"]:::uiNode
+
+    Upload --> Storage
+    Upload --> OCR --> Comprehend --> MCQEngine --> QuizUI
+```
+
+---
 
 ### The Unified Chunk Contract
 
@@ -70,28 +152,32 @@ Every ingestion module emits a list of `Chunk` objects, ensuring consistent retr
 
 ```python
 {
-    "id":            str,    # Stable, deterministic slug: f"{slug(source)}-{kind}-{location}-{idx}"
-    "text":          str,    # Clean text content
-    "source_type":   str,    # "notes" | "slide" | "pdf" | "document"
-    "source_name":   str,    # "neural_networks_notes.pdf"
-    "location":      str,    # Exact location: "Page 2" or "Section 3"
-    "location_kind": str     # "page" | "section"
+    "id":                     str,    # Stable, deterministic slug: f"{slug(source)}-{kind}-{location}-{idx}"
+    "text":                   str,    # Clean, layout-extracted text content
+    "source_type":            str,    # "notes" | "slide" | "pdf" | "document"
+    "source_name":            str,    # "neural_networks_notes.pdf"
+    "location":               str,    # Exact location: "Page 2" or "Section 3"
+    "location_kind":          str,    # "page" | "section" | "snippet"
+    "blob_url":               str,    # Cloud document URL in Azure Blob Storage
+    "metadata_storage_path":  str     # Azure Storage identifier for provenance tracking
 }
 ```
 
 - **Deterministic `id`:** Prevents index duplication when re-running ingestion.
-- **Unified `location` / `location_kind`:** Discriminator pair preventing confusing optional fields.
+- **Unified `location` / `location_kind`:** Discriminator pair preventing ambiguous optional fields.
+- **Cloud Provenance (`blob_url`):** Direct reference linking retrieved evidence to the persistent source file in Azure Blob Storage.
 
 ---
 
 ## 🛠️ Technology Stack
 
-- **Python 3.11+ / Standard Library** (Plain, readable functions; zero unnecessary abstractions)
-- **Azure AI Content Understanding** (Video transcript extraction and OCR layout analysis)
-- **Azure AI Search** (Cloud indexing and retrieval backbone)
-- **Microsoft Foundry / Azure OpenAI** (`gpt-4o-mini` for cost-efficient answer synthesis)
-- **Streamlit** (Clean, responsive chat UI with live demo presets)
-- **PyPDF2 / pypdf** (Fast, offline, zero-cost local PDF text extraction)
+- **Frontend**: React 19, Vite, Vanilla CSS (Curated modern design system, glassmorphism, micro-animations)
+- **Backend**: FastAPI, Uvicorn, Pydantic, Python 3.11+
+- **Cloud Persistence**: Azure Blob Storage (`azure-storage-blob>=12.19.0`) with local simulator fallback
+- **Document Intelligence**: Azure AI Document Intelligence & local layout-aware parsers (PDF, DOCX, TXT)
+- **Cloud Indexing**: Azure AI Search (`azure-search-documents`) with local BM25 ranking fallback
+- **Reasoning & Synthesis**: Microsoft Azure AI Foundry (`gpt-5-mini` / `gpt-4o-mini`) with 3-phase Deep Thinking
+- **Multimodal AI**: Azure AI Speech (Neural TTS / STT) and Azure AI Translator
 
 ---
 
@@ -174,9 +260,9 @@ The system was evaluated against the 18 ground-truth test questions defined in [
 
 | Category | # | Test Question | Ground-Truth Target | Actual System Behavior | Result | Verified Citation |
 |---|---|---|---|---|---|---|
-| **Video Only** | V1 | What physical intuition is given for Momentum in the lecture? | Bowling ball downhill | Answered with bowling ball analogy | **PASS** | `Lecture 3 @ 00:01:10` |
-| **Video Only** | V2 | Why do standard gradient descent updates struggle in ill-conditioned ravines? | Curvature difference across ravine walls | Answered with ravine oscillation details | **PASS** | `Lecture 3 @ 00:00:35` |
-| **Video Only** | V3 | Why does AdamW decouple weight decay from gradient updates? | L2 weight decay interaction bug in Adam | Answered with AdamW decoupling fix | **PASS** | `Lecture 3 @ 00:01:50` & `Slide 6` |
+| **Lecture Slides** | V1 | What physical intuition is given for Momentum in the lecture? | Bowling ball downhill | Answered with bowling ball analogy | **PASS** | `Slide 5 @ Momentum` |
+| **Lecture Slides** | V2 | Why do standard gradient descent updates struggle in ill-conditioned ravines? | Curvature difference across ravine walls | Answered with ravine oscillation details | **PASS** | `Slide 4 @ Ravines` |
+| **Lecture Slides** | V3 | Why does AdamW decouple weight decay from gradient updates? | L2 weight decay interaction bug in Adam | Answered with AdamW decoupling fix | **PASS** | `Slide 6 @ AdamW` |
 | **Document Only** | D1 | What is the mathematical update rule for gradient descent parameter updates? | Update formula `w_{t+1}` | Formulated update rule `w_t - eta*grad` | **PASS** | `Notes @ Page 1` |
 | **Document Only** | D2 | Why are saddle points considered a more severe obstacle than local minima? | High-dimensional loss surfaces & plateaus | Identified saddle points & flat plateaus | **PASS** | `Notes @ Page 1` & `Slide 2` |
 | **Document Only** | D3 | What failure mode occurs if the learning rate eta is set too large? | Divergence & NaN loss | Explains oscillation across ravines & NaN | **PASS** | `Notes @ Page 2` & `Slide 3` |
@@ -222,7 +308,7 @@ A common failure mode in LLM applications is hallucinating from pretraining know
 
 1. **Single-Topic Scope:** The demo is scoped to one complete course topic (Gradient Descent and Optimization). Ingesting an entire semester's library would require multi-tenant indexing and document hierarchy navigation.
 2. **Keyword Retrieval Priority (Decision D-003):** The first release uses BM25/keyword search rather than dense vector embeddings. This demos quickly and legibly, but means questions using completely different vocabulary from the lecturer may require rephrasing.
-3. **Disk Cache Boundary (Decision D-002):** Video extraction is cached to JSON and never re-extracted during daily development. If the raw video changes, the cache must be regenerated explicitly.
+3. **Disk Cache Boundary (Decision D-002):** Extracted document chunks and layout metadata are cached to JSON on first run to eliminate redundant OCR calls and maintain zero API overhead during daily local development.
 
 ---
 
