@@ -3,6 +3,9 @@
 **AI-103 Group Project — Academic Document Intelligence & Assessment Agent**  
 *Grounded Document Question Answering, Autonomous Quiz Generation & Verifiable Citations*
 
+[![Live Demo](https://img.shields.io/badge/Demo-Live%20on%20Vercel-success?style=for-the-badge&logo=vercel)](https://campus-content-intelligence-dxgk.vercel.app/)
+**🌐 Live Production Web App:** [https://campus-content-intelligence-dxgk.vercel.app/](https://campus-content-intelligence-dxgk.vercel.app/)
+
 ---
 
 ## 👥 System Capabilities
