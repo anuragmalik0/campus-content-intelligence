@@ -40,6 +40,9 @@ from src.services.blob_storage_service import get_blob_url
 
 load_dotenv()
 
+import time
+from collections import OrderedDict
+
 class Citation(TypedDict):
     source_name: str
     source_type: str
@@ -53,6 +56,33 @@ class Answer(TypedDict):
     answered: bool
     reason: Optional[str]
     thinking_summary: Optional[str]
+
+
+# ---------------------------------------------------------------------------
+# High-Speed In-Memory LRU Response Cache (Phase 1 Latency Optimization)
+# ---------------------------------------------------------------------------
+_RESPONSE_CACHE: OrderedDict[str, tuple[float, Answer]] = OrderedDict()
+_CACHE_TTL_SECONDS = 3600  # 1 hour
+_CACHE_MAX_ENTRIES = 200
+
+def _get_cached_answer(query: str) -> Optional[Answer]:
+    """Retrieve answer from in-memory cache if available and within TTL."""
+    key = " ".join(query.strip().lower().split())
+    if key in _RESPONSE_CACHE:
+        ts, ans = _RESPONSE_CACHE[key]
+        if time.time() - ts < _CACHE_TTL_SECONDS:
+            _RESPONSE_CACHE.move_to_end(key)
+            return ans
+        else:
+            del _RESPONSE_CACHE[key]
+    return None
+
+def _cache_answer(query: str, answer: Answer) -> None:
+    """Store synthesized answer into LRU cache."""
+    key = " ".join(query.strip().lower().split())
+    if len(_RESPONSE_CACHE) >= _CACHE_MAX_ENTRIES:
+        _RESPONSE_CACHE.popitem(last=False)
+    _RESPONSE_CACHE[key] = (time.time(), answer)
 
 
 # Common stopwords to filter out when checking query overlap
@@ -201,19 +231,19 @@ def synthesize_azure_openai_answer(question: str, chunks: list[SearchHit], is_gr
         system_prompt = (
             "You are an advanced academic course intelligence assistant with Deep Cognitive Reasoning capabilities for CS103.\n\n"
             "You are provided with verified course content retrieved from Azure AI Search & Azure Blob Storage within <rag_knowledge_base>.\n\n"
-            "You MUST perform structured Deep Thinking before presenting your final grounded answer. Structure your response EXACTLY as follows:\n\n"
+            "Perform brief, structured Deep Thinking (keep each phase to 1 concise bullet line) before presenting your final grounded answer:\n\n"
             "<deep_thinking>\n"
-            "Phase 1: Evidence Discovery — Analyze retrieved documents in <rag_knowledge_base>, identifying key facts, definitions, formulas, or rules directly related to the user query.\n"
-            "Phase 2: Cross-Source Synthesis & Coherence — Correlate statements across chunks, resolve any nuances, and plan the synthesized explanation.\n"
-            "Phase 3: Verified Citation Grounding — Confirm that each factual assertion maps cleanly to an exact source citation [SourceName @ Location].\n"
+            "Phase 1: Evidence Discovery — [1 brief bullet line of verified facts found in retrieved chunks]\n"
+            "Phase 2: Cross-Source Synthesis — [1 brief bullet line connecting the concepts]\n"
+            "Phase 3: Verified Citation Grounding — [1 brief bullet line confirming source locations]\n"
             "</deep_thinking>\n\n"
             "<grounded_answer>\n"
-            "[Your comprehensive, clear, well-structured final answer with inline citations [SourceName @ Location] or [filename @ snippet] for every factual statement.]\n"
+            "[Your clear, concise, well-structured final answer with inline citations [SourceName @ Location] or [filename @ snippet] for every factual statement.]\n"
             "</grounded_answer>\n\n"
-            "Strict Grounding Rules you must follow:\n"
-            "1. Answer using ONLY factual claims provided in the retrieved knowledge documents in <rag_knowledge_base>.\n"
+            "Strict Grounding Rules:\n"
+            "1. Answer using ONLY factual claims provided in <rag_knowledge_base>.\n"
             "2. Whenever citing facts from the retrieved data, include an inline citation in the exact format: [SourceName @ Location] or [filename @ snippet], for example: [attendance.txt @ snippet].\n"
-            "3. Be direct, concise, and accurate."
+            "3. Be direct, concise, and academic."
         )
         user_prompt = f"{context_str}\n\nQuestion: {question}"
     else:
@@ -235,17 +265,21 @@ def synthesize_azure_openai_answer(question: str, chunks: list[SearchHit], is_gr
     try:
         response = client.chat.completions.create(
             **call_kwargs,
-            max_completion_tokens=2500
+            reasoning_effort="low",
+            max_completion_tokens=1800
         )
     except Exception as e_tok:
-        if "max_completion_tokens" in str(e_tok) or "unsupported" in str(e_tok).lower():
+        try:
+            response = client.chat.completions.create(
+                **call_kwargs,
+                max_completion_tokens=1800
+            )
+        except Exception:
             response = client.chat.completions.create(
                 **call_kwargs,
                 temperature=0.0,
                 max_tokens=800
             )
-        else:
-            raise e_tok
 
     raw_text = response.choices[0].message.content or ""
 
@@ -310,6 +344,7 @@ def answer_question(question: str) -> Answer:
     """
     Main entrypoint for Layer 3 Agent.
     Evaluates input, searches indexed knowledge, and dynamically synthesizes answers.
+    Includes in-memory LRU caching for instant (<10ms) responses on repeated queries.
     """
     clean_q = (question or "").strip()
     if not clean_q:
@@ -330,6 +365,11 @@ def answer_question(question: str) -> Answer:
             "thinking_summary": None
         }
 
+    # 1. Fast Cache Check (sub-millisecond return)
+    cached = _get_cached_answer(clean_q)
+    if cached:
+        return cached
+
     # Retrieve candidate chunks from Layer 2
     hits = search(clean_q, top=5)
 
@@ -348,13 +388,17 @@ def answer_question(question: str) -> Answer:
     # Step 3: Synthesize answer with Microsoft Foundry if configured
     if is_azure_openai_configured():
         try:
-            return synthesize_azure_openai_answer(clean_q, hits, is_grounded=is_grounded_match)
+            ans = synthesize_azure_openai_answer(clean_q, hits, is_grounded=is_grounded_match)
+            _cache_answer(clean_q, ans)
+            return ans
         except Exception as e:
             print(f"[WARN] Azure OpenAI call failed: {e}. Using grounded offline synthesizer.")
 
     # Offline fallback
     if is_grounded_match:
-        return synthesize_offline_answer(clean_q, hits)
+        ans = synthesize_offline_answer(clean_q, hits)
+        _cache_answer(clean_q, ans)
+        return ans
 
     # If offline and no chunks match
     missing_topics = ", ".join(sorted(specific_q_keywords - specific_overlap)) if specific_q_keywords else "general topic"
@@ -365,6 +409,151 @@ def answer_question(question: str) -> Answer:
         "reason": f"Topic ({missing_topics}) is not in the local offline files.",
         "thinking_summary": None
     }
+
+
+def answer_question_stream(question: str):
+    """
+    Streaming generator for Layer 3 Agent (Server-Sent Events / token streaming).
+    Yields SSE event dicts as tokens stream in from Azure OpenAI.
+    """
+    clean_q = (question or "").strip()
+    if not clean_q:
+        yield {"event": "error", "data": "Please provide a valid question."}
+        return
+
+    if len(clean_q) > 500:
+        yield {"event": "error", "data": "Your query is too long. Please limit questions to 500 characters."}
+        return
+
+    # Check cache first for instant response
+    cached = _get_cached_answer(clean_q)
+    if cached:
+        yield {"event": "cached", "data": cached}
+        return
+
+    # 1. Retrieve Candidate Chunks from Azure AI Search
+    hits = search(clean_q, top=5)
+    is_grounded_match = bool(hits)
+
+    if not is_azure_openai_configured():
+        ans = synthesize_offline_answer(clean_q, hits) if is_grounded_match else {
+            "text": f"This question ({clean_q}) is not covered in the currently indexed offline files.",
+            "citations": [],
+            "answered": False,
+            "reason": "Not found offline.",
+            "thinking_summary": None
+        }
+        _cache_answer(clean_q, ans)
+        yield {"event": "done", "data": ans}
+        return
+
+    from openai import AzureOpenAI
+
+    endpoint = FOUNDRY_ENDPOINT
+    if "/openai" in endpoint:
+        endpoint = endpoint.split("/openai")[0]
+
+    client = AzureOpenAI(
+        azure_endpoint=endpoint,
+        api_key=FOUNDRY_API_KEY,
+        api_version="2024-02-01"
+    )
+
+    if is_grounded_match and hits:
+        context_str = build_context_block(hits)
+        system_prompt = (
+            "You are an advanced academic course intelligence assistant with Deep Cognitive Reasoning capabilities for CS103.\n\n"
+            "You are provided with verified course content retrieved from Azure AI Search & Azure Blob Storage within <rag_knowledge_base>.\n\n"
+            "Perform brief, structured Deep Thinking (keep each phase to 1 concise bullet line) before presenting your final grounded answer:\n\n"
+            "<deep_thinking>\n"
+            "Phase 1: Evidence Discovery — [1 brief bullet line of verified facts found in retrieved chunks]\n"
+            "Phase 2: Cross-Source Synthesis — [1 brief bullet line connecting the concepts]\n"
+            "Phase 3: Verified Citation Grounding — [1 brief bullet line confirming source locations]\n"
+            "</deep_thinking>\n\n"
+            "<grounded_answer>\n"
+            "[Your clear, concise, well-structured final answer with inline citations [SourceName @ Location] or [filename @ snippet] for every factual statement.]\n"
+            "</grounded_answer>\n\n"
+            "Strict Grounding Rules:\n"
+            "1. Answer using ONLY factual claims provided in <rag_knowledge_base>.\n"
+            "2. Whenever citing facts from the retrieved data, include an inline citation in the exact format: [SourceName @ Location] or [filename @ snippet].\n"
+            "3. Be direct, concise, and academic."
+        )
+        user_prompt = f"{context_str}\n\nQuestion: {clean_q}"
+    else:
+        system_prompt = "You are an academic course intelligence assistant for CS103. Provide a direct, concise, accurate answer."
+        user_prompt = f"Question: {clean_q}"
+
+    call_kwargs = {
+        "model": FOUNDRY_MODEL_DEPLOYMENT,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "stream": True,
+        "max_completion_tokens": 1800
+    }
+
+    full_content = ""
+    try:
+        try:
+            stream = client.chat.completions.create(
+                **call_kwargs,
+                reasoning_effort="low"
+            )
+        except Exception:
+            stream = client.chat.completions.create(**call_kwargs)
+
+        for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    full_content += delta
+                    yield {"event": "delta", "data": delta}
+    except Exception as e_tok:
+        # Fallback to non-streaming if stream call fails
+        ans = synthesize_azure_openai_answer(clean_q, hits, is_grounded=is_grounded_match)
+        _cache_answer(clean_q, ans)
+        yield {"event": "done", "data": ans}
+        return
+
+    # Post-process accumulated text for citations and thinking summary
+    thinking_summary = None
+    final_text = full_content
+
+    think_match = re.search(r'<deep_thinking>(.*?)</deep_thinking>', full_content, re.DOTALL | re.IGNORECASE)
+    if think_match:
+        thinking_summary = think_match.group(1).strip()
+        final_text = re.sub(r'<deep_thinking>.*?</deep_thinking>', '', full_content, flags=re.DOTALL | re.IGNORECASE).strip()
+
+    answer_match = re.search(r'<grounded_answer>(.*?)</grounded_answer>', final_text, re.DOTALL | re.IGNORECASE)
+    if answer_match:
+        final_text = answer_match.group(1).strip()
+    else:
+        final_text = final_text.strip()
+
+    verified_citations = []
+    if is_grounded_match and hits:
+        seen = set()
+        for c in hits:
+            loc_str = str(c["location"])
+            src_str = c["source_name"]
+            if loc_str in final_text or src_str in final_text or loc_str in full_content or src_str in full_content:
+                key = f"{src_str}--{loc_str}"
+                if key not in seen:
+                    seen.add(key)
+                    verified_citations.append(format_citation(c))
+        if not verified_citations and hits:
+            verified_citations.append(format_citation(hits[0]))
+
+    final_ans: Answer = {
+        "text": final_text,
+        "citations": verified_citations,
+        "answered": True,
+        "reason": None,
+        "thinking_summary": thinking_summary
+    }
+    _cache_answer(clean_q, final_ans)
+    yield {"event": "done", "data": final_ans}
 
 
 

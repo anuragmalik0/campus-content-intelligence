@@ -131,17 +131,18 @@ export default function App() {
     }
   };
 
-  // 3. Send Question to /api/ask
+  // 3. Send Question to /api/ask-stream (Real-Time Token Streaming)
   const handleSendMessage = async (queryText) => {
     const userMsgId = 'user-' + Date.now();
-    const newMessages = [
-      ...messages,
+    const asstMsgId = 'asst-' + Date.now();
+
+    setMessages(prev => [
+      ...prev,
       { id: userMsgId, role: 'user', text: queryText }
-    ];
-    setMessages(newMessages);
+    ]);
     setIsLoading(true);
 
-    // Record inquiry to student profile if signed in
+    // Record inquiry to student profile asynchronously in the background
     if (currentStudent?.student_id) {
       fetch('/api/student/record-query', {
         method: 'POST',
@@ -150,67 +151,148 @@ export default function App() {
           student_id: currentStudent.student_id,
           question: queryText
         })
-      })
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data?.profile) {
-            setCurrentStudent(data.profile);
-            localStorage.setItem('campusmind_student', JSON.stringify(data.profile));
-          }
-        })
-        .catch(() => {});
+      }).catch(() => {});
     }
 
     try {
-      const res = await fetch('/api/ask', {
+      const response = await fetch('/api/ask-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: queryText }),
       });
 
-      const data = await res.json();
-      setIsLoading(false);
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
-      if (!res.ok) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamedRawText = '';
+      let isAnswerStarted = false;
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.event === 'cached' || event.event === 'done' || event.event === 'final') {
+                const finalData = event.data;
+                setIsLoading(false);
+                setMessages(prev => {
+                  const filtered = prev.filter(m => m.id !== asstMsgId);
+                  return [
+                    ...filtered,
+                    {
+                      id: asstMsgId,
+                      role: 'assistant',
+                      text: finalData.text,
+                      answered: finalData.answered !== false,
+                      reason: finalData.reason,
+                      citations: finalData.citations || [],
+                      thinking_summary: finalData.thinking_summary || null
+                    }
+                  ];
+                });
+                return;
+              } else if (event.event === 'delta') {
+                if (!isAnswerStarted) {
+                  isAnswerStarted = true;
+                  setIsLoading(false);
+                  setMessages(prev => [
+                    ...prev,
+                    {
+                      id: asstMsgId,
+                      role: 'assistant',
+                      text: '',
+                      answered: true,
+                      citations: [],
+                      thinking_summary: null
+                    }
+                  ]);
+                }
+                streamedRawText += event.data;
+
+                // Clean tags for smooth real-time token display
+                let displayText = streamedRawText;
+                if (streamedRawText.includes('<grounded_answer>')) {
+                  displayText = streamedRawText.split('<grounded_answer>')[1]?.replace(/<\/grounded_answer>/gi, '') || '';
+                } else if (streamedRawText.includes('</deep_thinking>')) {
+                  displayText = streamedRawText.split('</deep_thinking>')[1]?.replace(/<grounded_answer>/gi, '') || '';
+                } else if (streamedRawText.includes('<deep_thinking>')) {
+                  displayText = '🧠 Analyzing course documents and reasoning...';
+                }
+
+                if (displayText) {
+                  setMessages(prev =>
+                    prev.map(m => (m.id === asstMsgId ? { ...m, text: displayText } : m))
+                  );
+                }
+              }
+            } catch (e) {
+              // Ignore line parse noise
+            }
+          }
+        }
+      }
+      setIsLoading(false);
+    } catch (err) {
+      // Fallback to standard /api/ask if streaming encounters connection error
+      try {
+        const res = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: queryText }),
+        });
+        const data = await res.json();
+        setIsLoading(false);
+
+        if (!res.ok) {
+          setMessages(prev => [
+            ...prev,
+            {
+              id: 'err-' + Date.now(),
+              role: 'assistant',
+              answered: false,
+              text: data.detail || 'Server encountered an error processing your query.',
+              reason: 'HTTP ' + res.status
+            }
+          ]);
+          return;
+        }
+
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== asstMsgId),
+          {
+            id: asstMsgId,
+            role: 'assistant',
+            text: data.text,
+            answered: data.answered,
+            reason: data.reason,
+            citations: data.citations || [],
+            sourceDocs: data.source_documents || [],
+            thinking_summary: data.thinking_summary || null
+          }
+        ]);
+      } catch (fallbackErr) {
+        setIsLoading(false);
         setMessages(prev => [
           ...prev,
           {
             id: 'err-' + Date.now(),
             role: 'assistant',
             answered: false,
-            text: data.detail || 'Server encountered an error processing your query.',
-            reason: 'HTTP ' + res.status
+            text: 'Unable to connect to backend server. Make sure server.py is running on port 8000.',
+            reason: 'Network Connection Error'
           }
         ]);
-        return;
       }
-
-      setMessages(prev => [
-        ...prev,
-        {
-          id: 'asst-' + Date.now(),
-          role: 'assistant',
-          text: data.text,
-          answered: data.answered,
-          reason: data.reason,
-          citations: data.citations || [],
-          sourceDocs: data.source_documents || [],
-          thinking_summary: data.thinking_summary || null
-        }
-      ]);
-    } catch (err) {
-      setIsLoading(false);
-      setMessages(prev => [
-        ...prev,
-        {
-          id: 'err-' + Date.now(),
-          role: 'assistant',
-          answered: false,
-          text: 'Unable to connect to backend server. Make sure server.py is running on port 8000.',
-          reason: 'Network Connection Error'
-        }
-      ]);
-      console.error(err);
     }
   };
 

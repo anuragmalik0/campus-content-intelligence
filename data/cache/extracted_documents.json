@@ -1,0 +1,82 @@
+[
+  {
+    "id": "lecture-3-notes-gradient-descent-page-1-0",
+    "text": "CS103: Machine Learning & Neural Networks Lecture 3 Notes: Fundamentals of Gradient Descent 1. Introduction and Problem Formulation Gradient descent is a first-order iterative optimization algorithm used to find a local minimum of a differentiable objective function. In neural networks, the objective is typically an empirical loss function L(w), such as Mean Squared Error (MSE) for regression or Cross-Entropy for classification. The core update rule updates parameter vector w at iteration t using learning rate eta: w_{t+1} = w_t - eta * grad(L(w_t)). The negative gradient points in the direction of steepest descent. 2. Convex vs Non-Convex Optimization For convex loss functions like linear regression, gradient descent is guaranteed to converge globally to the global minimum. In deep neural networks, loss surfaces are highly non-convex, featuring saddle points, flat plateaus, and multiple local minima. Contemporary empirical research indicates that saddle points surrounded by high-dimensional plateaus are a more severe obstacle to gradient descent than bad local minima.",
+    "source_type": "pdf",
+    "source_name": "Lecture 3 Notes: Gradient Descent",
+    "location": "1",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-notes-gradient-descent-page-2-0",
+    "text": "3. Learning Rate and Convergence Dynamics The learning rate (step size parameter eta) is the most critical hyperparameter. If eta is too large, optimization diverges or oscillates wildly across steep ravines. If eta is too small, training progresses exceedingly slowly and can easily become trapped in shallow saddle points. A practical strategy is learning rate scheduling, such as cosine annealing or step decay, which reduces the learning rate as training epochs advance. 4. Exploding and Vanishing Gradients In deep networks, gradients backpropagated through repeated matrix multiplications can either exponentially vanish toward zero or exponentially explode toward infinity. Vanishing gradients prevent early layers from learning features, whereas exploding gradients lead to arithmetic overflow and NaN weights. Solutions include proper weight initialization (He or Xavier init), residual skip connections, LayerNorm/BatchNorm, and gradient clipping (e.g. clipping gradient norm to 1.0).",
+    "source_type": "pdf",
+    "source_name": "Lecture 3 Notes: Gradient Descent",
+    "location": "2",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-notes-gradient-descent-page-3-0",
+    "text": "5. Variants of Gradient Descent: Batch, Mini-Batch, and SGD Standard Batch Gradient Descent computes the gradient of the loss over the entire training set of N examples. While mathematically precise, its computational cost O(N) per step becomes prohibitive for large datasets. Stochastic Gradient Descent (SGD) computes the gradient using a single randomly drawn training sample at each step. This makes updates computationally cheap O(1) and injects stochastic noise that helps escape saddle points, but updates exhibit high variance and oscillate significantly. Mini-Batch Gradient Descent strikes the optimal balance by computing the gradient over small batches (typically 32 to 256 samples). Mini-batching leverages vectorization and parallel tensor execution on GPUs while retaining moderate regularization noise.",
+    "source_type": "pdf",
+    "source_name": "Lecture 3 Notes: Gradient Descent",
+    "location": "3",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-notes-gradient-descent-page-4-0",
+    "text": "6. Adaptive Optimizers: Momentum, RMSProp, and Adam SGD with Momentum accelerates convergence along consistent gradient dimensions and dampens oscillations across high-curvature directions. It maintains an exponentially decaying velocity vector v_t = gamma * v_{t-1} + eta * grad(L(w)), typically setting momentum coefficient gamma to 0.9. Adaptive Moment Estimation (Adam) combines the advantages of Momentum (first raw moment estimation) and RMSProp (second uncentered moment estimation). Adam computes individual adaptive learning rates for each parameter using moving averages of past gradients m_t and past squared gradients v_t, with standard hyperparameters beta1=0.9, beta2=0.999, and epsilon=1e-8. Bias corrections are applied to counteract the zero-initialization bias in early training steps. Summary Table: For transformer models and most computer vision tasks, AdamW (Adam with decoupled weight decay) has become the de facto default optimizer, whereas SGD with momentum remains competitive in ResNet image classification.",
+    "source_type": "pdf",
+    "source_name": "Lecture 3 Notes: Gradient Descent",
+    "location": "4",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-slides-optimization-landscape-page-1-0",
+    "text": "Lecture 3: Gradient Descent & Neural Network Optimization Course: CS103 Content Intelligence Instructor: Prof. Elena Vance Topic: Optimizing deep neural networks from first principles",
+    "source_type": "slide",
+    "source_name": "Lecture 3 Slides: Optimization Landscape",
+    "location": "1",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-slides-optimization-landscape-page-2-0",
+    "text": "Slide 2: The Optimization Landscape \u007f High-dimensional loss surfaces are dominated by saddle points, not bad local minima. \u007f Critical challenge: Ill-conditioned curvature where gradients in orthogonal directions differ by orders of magnitude. \u007f Update formula: w_{t+1} = w_t - \u03b7 \u2207L(w_t). \u007f Key takeaway: Steer down ravines without bouncing uncontrollably between valley walls.",
+    "source_type": "slide",
+    "source_name": "Lecture 3 Slides: Optimization Landscape",
+    "location": "2",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-slides-optimization-landscape-page-3-0",
+    "text": "Slide 3: Learning Rate: Finding The Sweet Spot \u007f \u03b7 Too High: Loss explodes to NaN; gradient ascent happens instead of descent. \u007f \u03b7 Too Low: Crawls infinitesimally slowly; stalls on flat plateau regions. \u007f Rule of Thumb: Start with 3e-4 (the Karpathy constant for Adam) or 1e-3. \u007f LR Warmup: Linearly scale learning rate from 0 over the first 5% of training steps to stabilize early layers.",
+    "source_type": "slide",
+    "source_name": "Lecture 3 Slides: Optimization Landscape",
+    "location": "3",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-slides-optimization-landscape-page-4-0",
+    "text": "Slide 4: Batch Size Comparison: Batch vs Mini-Batch vs SGD \u007f Full Batch: Accurate gradient, memory intensive O(N), fails on datasets larger than VRAM. \u007f SGD (size=1): High gradient variance, acts as implicit noise regularization, poor GPU tensor utilization. \u007f Mini-batch (32-256): Industry standard. Maximizes hardware throughput while maintaining helpful stochastic gradient noise.",
+    "source_type": "slide",
+    "source_name": "Lecture 3 Slides: Optimization Landscape",
+    "location": "4",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-slides-optimization-landscape-page-5-0",
+    "text": "Slide 5: Momentum: Overcoming High-Curvature Ravines \u007f Physics analogy: A heavy ball rolling down a hilly landscape accumulates physical momentum. \u007f Velocity update: v_t = \u03b3 v_{t-1} + \u03b7 \u2207L(w_t). \u007f Default momentum parameter: \u03b3 = 0.9. \u007f Result: Accelerates in persistent descent directions and cancels out oscillating cross-ravine vibrations.",
+    "source_type": "slide",
+    "source_name": "Lecture 3 Slides: Optimization Landscape",
+    "location": "5",
+    "location_kind": "page"
+  },
+  {
+    "id": "lecture-3-slides-optimization-landscape-page-6-0",
+    "text": "Slide 6: Adaptive Optimizers: Adam and AdamW \u007f Adam tracks 1st moment (mean) with \u03b21=0.9 and 2nd moment (variance) with \u03b22=0.999. \u007f Epsilon stability term: \u03b5 = 1e-8 to avoid division by zero. \u007f AdamW distinction: Decouples L2 weight decay regularization from gradient updates, fixing a key bug in standard Adam. \u007f Recommendation: Always default to AdamW for Transformer architectures.",
+    "source_type": "slide",
+    "source_name": "Lecture 3 Slides: Optimization Landscape",
+    "location": "6",
+    "location_kind": "page"
+  }
+]

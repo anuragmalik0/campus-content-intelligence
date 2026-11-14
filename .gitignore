@@ -7,6 +7,7 @@ data/sample_media/*
 !data/sample_media/.gitkeep
 data/cache/*
 !data/cache/.gitkeep
+!data/cache/extracted_documents.json
 data/blob_storage/*
 !data/blob_storage/.gitkeep
 data/student_profiles/*

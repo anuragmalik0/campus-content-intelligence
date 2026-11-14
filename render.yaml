@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: campus-content-intelligence
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m uvicorn src.ui.server:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: FOUNDRY_ENDPOINT
+        sync: false
+      - key: FOUNDRY_API_KEY
+        sync: false
+      - key: FOUNDRY_MODEL_DEPLOYMENT
+        value: gpt-4o-mini
+      - key: AZURE_SEARCH_ENDPOINT
+        sync: false
+      - key: AZURE_SEARCH_KEY
+        sync: false
+      - key: AZURE_SEARCH_INDEX_NAME
+        value: ks-file-41-index
+      - key: AZURE_STORAGE_CONNECTION_STRING
+        sync: false
+      - key: AZURE_STORAGE_CONTAINER_NAME
+        value: campus-documents
+      - key: AZURE_STORAGE_STUDENT_CONTAINER
+        value: campus-students
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        value: centralus
+      - key: AZURE_TRANSLATOR_KEY
+        sync: false
+      - key: AZURE_TRANSLATOR_REGION
+        value: centralus
